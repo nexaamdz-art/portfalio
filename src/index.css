@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .font-serif-luxury {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+  }
+  .font-script {
+    font-family: 'Great Vibes', 'Allura', cursive;
+  }
+  .font-sans-modern {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  .glow-blue-subtle {
+    text-shadow: 0 0 16px rgba(56, 189, 248, 0.4), 0 0 35px rgba(59, 130, 246, 0.25);
+  }
+  .glow-blue-soft {
+    text-shadow: 0 0 20px rgba(96, 165, 250, 0.5), 0 0 45px rgba(37, 99, 235, 0.3);
+  }
+  .glow-blue-faint {
+    text-shadow: 0 0 12px rgba(125, 211, 252, 0.35);
+  }
+}

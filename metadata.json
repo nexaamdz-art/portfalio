@@ -1,0 +1,6 @@
+{
+  "name": "Dark Purple Page",
+  "description": "A minimalist single-page layout with five distinct sections on a dark purple canvas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
