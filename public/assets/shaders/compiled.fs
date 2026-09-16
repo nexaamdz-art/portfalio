@@ -1,0 +1,1 @@
+// Compiled fragment shader placeholder

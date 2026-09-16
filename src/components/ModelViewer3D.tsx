@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -11,20 +11,12 @@ import {
   type DissolveUniforms,
   type DissolveParticleSystem,
 } from '../utils/dissolveShader';
-import { Sparkles, Play, Pause, SlidersHorizontal, RotateCcw } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 
 interface ModelViewer3DProps {
   modelUrl?: string;
   className?: string;
 }
-
-const COLOR_PRESETS = [
-  { name: 'Purple Glow', hex: '#c084fc', colorInt: 0xc084fc },
-  { name: 'Cyan Neon', hex: '#38bdf8', colorInt: 0x38bdf8 },
-  { name: 'Emerald Wave', hex: '#34d399', colorInt: 0x34d399 },
-  { name: 'Golden Sun', hex: '#fbbf24', colorInt: 0xfbbf24 },
-  { name: 'Crimson Rose', hex: '#fb7185', colorInt: 0xfb7185 },
-];
 
 export default function ModelViewer3D({
   modelUrl = '/models/hijabgirl.glb',
@@ -34,53 +26,14 @@ export default function ModelViewer3D({
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
   const [hasError, setHasError] = useState(false);
-
-  // Dissolve effect states
-  const [dissolvePercent, setDissolvePercent] = useState<number>(100);
-  const [isAutoLooping, setIsAutoLooping] = useState<boolean>(false);
-  const [activeColor, setActiveColor] = useState<string>(COLOR_PRESETS[0].hex);
-  const [showControls, setShowControls] = useState<boolean>(false);
   const [loadAttempt, setLoadAttempt] = useState<number>(0);
 
   // Refs for animation & Three.js objects
   const uniformsRef = useRef<DissolveUniforms>(createDissolveUniforms(0xc084fc));
-  const particleSystemRef = useRef<DissolveParticleSystem | null>(null);
+  const particleSystemsRef = useRef<DissolveParticleSystem[]>([]);
   const isAnimatingRef = useRef<boolean>(true);
-  const isAutoLoopingRef = useRef<boolean>(false);
   const animDirectionRef = useRef<number>(-1); // -1 = appearing (progress decreasing), +1 = dissolving
   const loopPauseTimerRef = useRef<number>(0);
-  const controlsRef = useRef<OrbitControls | null>(null);
-
-  // Synchronize autoLoop ref
-  useEffect(() => {
-    isAutoLoopingRef.current = isAutoLooping;
-  }, [isAutoLooping]);
-
-  // Handle color change
-  const handleColorChange = (hex: string, colorInt: number) => {
-    setActiveColor(hex);
-    uniformsRef.current.uEdgeColor.value.set(colorInt);
-  };
-
-  // Trigger replay of gradual appearance
-  const handleReplayDissolve = () => {
-    uniformsRef.current.uProgress.value = 5.5;
-    animDirectionRef.current = -1;
-    isAnimatingRef.current = true;
-    loopPauseTimerRef.current = 0;
-    setDissolvePercent(0);
-  };
-
-  // Handle manual progress slider change
-  const handleSliderChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value);
-    setDissolvePercent(val);
-    isAnimatingRef.current = false;
-    setIsAutoLooping(false);
-    // map 0% (hidden) -> 5.5, 100% (fully appeared) -> -5.5
-    const mappedProgress = 5.5 - (val / 100) * 11.0;
-    uniformsRef.current.uProgress.value = mappedProgress;
-  };
 
   const handleRetry = () => {
     setLoading(true);
@@ -115,7 +68,10 @@ export default function ModelViewer3D({
       powerPreference: 'high-performance',
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setSize(container.clientWidth, container.clientHeight, false);
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.display = 'block';
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.35;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -130,7 +86,6 @@ export default function ModelViewer3D({
     controls.autoRotate = false;
     controls.minPolarAngle = Math.PI / 4;
     controls.maxPolarAngle = Math.PI / 1.8;
-    controlsRef.current = controls;
 
     // 5. Cinematic Lighting
     const ambientLight = new THREE.AmbientLight(0x818cf8, 1.6);
@@ -186,31 +141,35 @@ export default function ModelViewer3D({
       isAnimatingRef.current = true;
       animDirectionRef.current = -1;
 
-      // Apply emissive dissolve shader to all meshes & attach particle cloud
+      // Collect meshes first to avoid mutating children during traversal
+      const meshes: THREE.Mesh[] = [];
       model.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
-          const mesh = child as THREE.Mesh;
-          mesh.castShadow = false;
-          mesh.receiveShadow = false;
-
-          if (mesh.material) {
-            if (Array.isArray(mesh.material)) {
-              mesh.material.forEach((mat) => applyDissolveToMaterial(mat, uniformsRef.current));
-            } else {
-              applyDissolveToMaterial(mesh.material, uniformsRef.current);
-            }
-          }
-
-          // Create and attach the burning glowing particles
-          try {
-            const particles = createDissolveParticles(mesh, uniformsRef.current);
-            model.add(particles.points);
-            particleSystemRef.current = particles;
-          } catch (err) {
-            console.warn('Particle creation note:', err);
-          }
+          meshes.push(child as THREE.Mesh);
         }
       });
+
+      // Apply emissive dissolve shader to meshes & attach particle clouds
+      for (const mesh of meshes) {
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+
+        if (mesh.material) {
+          if (Array.isArray(mesh.material)) {
+            mesh.material.forEach((mat) => applyDissolveToMaterial(mat, uniformsRef.current));
+          } else {
+            applyDissolveToMaterial(mesh.material, uniformsRef.current);
+          }
+        }
+
+        try {
+          const particles = createDissolveParticles(mesh, uniformsRef.current);
+          model.add(particles.points);
+          particleSystemsRef.current.push(particles);
+        } catch (err) {
+          console.warn('Particle creation note:', err);
+        }
+      }
 
       modelGroup.add(pivot);
       setLoading(false);
@@ -246,7 +205,6 @@ export default function ModelViewer3D({
       for (const url of candidateUrls) {
         if (isDisposed) return;
         try {
-          // Attempt direct fetch to verify accessibility & support chunked loading
           const response = await fetch(url);
           if (!response.ok) {
             throw new Error(`HTTP ${response.status} when fetching ${url}`);
@@ -257,14 +215,20 @@ export default function ModelViewer3D({
 
           if (!response.body) {
             const arrayBuffer = await response.arrayBuffer();
-            loader.parse(
-              arrayBuffer,
-              '',
-              (gltf) => setupModel(gltf.scene),
-              (err) => {
-                throw err;
-              }
-            );
+            if (isDisposed) return;
+            await new Promise<void>((resolve, reject) => {
+              loader.parse(
+                arrayBuffer,
+                '',
+                (gltf) => {
+                  if (!isDisposed) {
+                    setupModel(gltf.scene);
+                  }
+                  resolve();
+                },
+                (err) => reject(err)
+              );
+            });
             return;
           }
 
@@ -286,6 +250,8 @@ export default function ModelViewer3D({
             }
           }
 
+          if (isDisposed) return;
+
           // Combine chunks into single Uint8Array
           const fullBuffer = new Uint8Array(receivedBytes);
           let offset = 0;
@@ -296,14 +262,19 @@ export default function ModelViewer3D({
 
           setProgress(100);
 
-          loader.parse(
-            fullBuffer.buffer,
-            '',
-            (gltf) => setupModel(gltf.scene),
-            (parseErr) => {
-              throw parseErr;
-            }
-          );
+          await new Promise<void>((resolve, reject) => {
+            loader.parse(
+              fullBuffer.buffer,
+              '',
+              (gltf) => {
+                if (!isDisposed) {
+                  setupModel(gltf.scene);
+                }
+                resolve();
+              },
+              (parseErr) => reject(parseErr)
+            );
+          });
           return;
         } catch (err) {
           lastError = err;
@@ -311,23 +282,34 @@ export default function ModelViewer3D({
         }
       }
 
-      // If all candidate URLs failed, fallback to standard loader.load
-      loader.load(
-        modelUrl,
-        (gltf) => setupModel(gltf.scene),
-        (xhr) => {
-          if (xhr.total > 0) {
-            setProgress(Math.round((xhr.loaded / xhr.total) * 100));
-          }
-        },
-        (err) => {
-          console.error('All model loading methods failed:', lastError || err);
-          if (!isDisposed) {
-            setHasError(true);
-            setLoading(false);
-          }
+      if (isDisposed) return;
+
+      // If all candidate URLs failed via fetch/parse, fallback to standard loader.load
+      try {
+        await new Promise<void>((resolve, reject) => {
+          loader.load(
+            modelUrl,
+            (gltf) => {
+              if (!isDisposed) {
+                setupModel(gltf.scene);
+              }
+              resolve();
+            },
+            (xhr) => {
+              if (xhr.total > 0) {
+                setProgress(Math.round((xhr.loaded / xhr.total) * 100));
+              }
+            },
+            (err) => reject(err)
+          );
+        });
+      } catch (err) {
+        console.error('All model loading methods failed:', lastError || err);
+        if (!isDisposed) {
+          setHasError(true);
+          setLoading(false);
         }
-      );
+      }
     };
 
     loadModelAsset();
@@ -339,13 +321,13 @@ export default function ModelViewer3D({
         if (width > 0 && height > 0) {
           camera.aspect = width / height;
           camera.updateProjectionMatrix();
-          renderer.setSize(width, height);
+          renderer.setSize(width, height, false);
         }
       }
     });
     resizeObserver.observe(container);
 
-    // 9. Animation loop with dissolve progress animation & particles
+    // 9. Animation loop with dissolve appearance animation & particles
     let lastTime = performance.now();
     const startTime = lastTime;
 
@@ -364,8 +346,8 @@ export default function ModelViewer3D({
       }
 
       // Update particle physics (sparks and wave turbulence)
-      if (particleSystemRef.current) {
-        particleSystemRef.current.update(delta);
+      for (const system of particleSystemsRef.current) {
+        system.update(delta);
       }
 
       // Animate gradual appearance / dissolve
@@ -377,36 +359,18 @@ export default function ModelViewer3D({
           const speed = 3.8;
           uniformsRef.current.uProgress.value += animDirectionRef.current * speed * delta;
 
-          // Compute percent for slider UI (0% to 100%)
           const currentProgress = uniformsRef.current.uProgress.value;
-          const currentPct = Math.round(
-            Math.max(0, Math.min(100, ((5.5 - currentProgress) / 11.0) * 100))
-          );
-          setDissolvePercent(currentPct);
 
           // Check boundary when appearing (-5.5 = fully materialized)
           if (animDirectionRef.current === -1 && currentProgress <= -5.5) {
             uniformsRef.current.uProgress.value = -5.5;
-            setDissolvePercent(100);
-            if (isAutoLoopingRef.current) {
-              // Pause at fully appeared before dissolving again
-              loopPauseTimerRef.current = 1.2;
-              animDirectionRef.current = 1;
-            } else {
-              isAnimatingRef.current = false;
-            }
+            isAnimatingRef.current = false;
           }
 
           // Check boundary when dissolving (+5.5 = fully invisible)
           if (animDirectionRef.current === 1 && currentProgress >= 5.5) {
             uniformsRef.current.uProgress.value = 5.5;
-            setDissolvePercent(0);
-            if (isAutoLoopingRef.current) {
-              loopPauseTimerRef.current = 0.6;
-              animDirectionRef.current = -1;
-            } else {
-              isAnimatingRef.current = false;
-            }
+            isAnimatingRef.current = false;
           }
         }
       }
@@ -423,10 +387,12 @@ export default function ModelViewer3D({
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
       controls.dispose();
-      renderer.dispose();
-      if (particleSystemRef.current) {
-        particleSystemRef.current.dispose();
+      for (const system of particleSystemsRef.current) {
+        system.dispose();
       }
+      particleSystemsRef.current = [];
+      renderer.dispose();
+      renderer.forceContextLoss();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
@@ -465,15 +431,14 @@ export default function ModelViewer3D({
           className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 text-slate-300 font-sans-modern text-sm z-20"
         >
           <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-5 max-w-xs flex flex-col items-center gap-3 shadow-2xl">
-            <span className="text-slate-300 text-sm">تعذر تحميل المجسم ثلاثي الأبعاد</span>
-            <span className="text-xs text-slate-400">Failed to load 3D model</span>
+            <span className="text-slate-300 text-sm">Failed to load 3D model</span>
             <button
               id="retry-load-model-btn"
               onClick={handleRetry}
               className="mt-2 flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition active:scale-95 shadow-lg"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>إعادة المحاولة / Retry</span>
+              <span>Retry</span>
             </button>
           </div>
         </div>
@@ -485,9 +450,6 @@ export default function ModelViewer3D({
         ref={containerRef}
         className="w-full h-full cursor-grab active:cursor-grabbing select-none"
       />
-
-
     </div>
   );
 }
-

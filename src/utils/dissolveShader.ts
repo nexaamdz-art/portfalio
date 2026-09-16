@@ -178,6 +178,14 @@ export function createDissolveParticles(
   particleTextureUrl = '/particle.png'
 ): DissolveParticleSystem {
   const geo = mesh.geometry;
+  if (!geo || !geo.attributes || !geo.attributes.position || geo.attributes.position.count === 0) {
+    const emptyPoints = new THREE.Points();
+    return {
+      points: emptyPoints,
+      update: () => {},
+      dispose: () => {},
+    };
+  }
   const posAttr = geo.attributes.position;
   const totalVertices = posAttr.count;
 

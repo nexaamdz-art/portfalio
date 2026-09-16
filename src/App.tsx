@@ -4,7 +4,8 @@
  */
 
 import { motion } from 'motion/react';
-import ModelViewer3D from './components/ModelViewer3D.tsx';
+import ModelViewer3D from './components/ModelViewer3D';
+import ProjectsSection from './components/ProjectsSection';
 
 export default function App() {
   return (
@@ -116,11 +117,7 @@ export default function App() {
       />
 
       {/* 4. Projects Section */}
-      <section
-        id="projects"
-        aria-label="Projects"
-        className="w-full min-h-screen"
-      />
+      <ProjectsSection />
 
       {/* 5. Contact Section */}
       <section

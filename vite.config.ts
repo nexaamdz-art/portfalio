@@ -1,11 +1,28 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import {defineConfig, Plugin} from 'vite';
+
+function assetRewritePlugin(): Plugin {
+  return {
+    name: 'asset-rewrite-plugin',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url) {
+          const match = req.url.match(/^(?:\/(?:work|works)(?:\/[^/]+)*)?(\/assets\/.*)$/);
+          if (match && req.url !== match[1]) {
+            req.url = match[1];
+          }
+        }
+        next();
+      });
+    },
+  };
+}
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [assetRewritePlugin(), react(), tailwindcss()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
